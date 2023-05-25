@@ -48,8 +48,8 @@ float dt = 0.01;
 
 
 void setup() {
-  pinMode(10, OUTPUT);
-  digitalWrite(10, HIGH);
+  pinMode(20, OUTPUT);
+  digitalWrite(20, HIGH);
   delay(250);
   Serial.begin(9600);
   Wire.begin();

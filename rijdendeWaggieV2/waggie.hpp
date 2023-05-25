@@ -1,11 +1,13 @@
 #include "Wire.h" // This library allows you to communicate with I2C devices.
+#include <stdio.h>
+#include <stdlib.h>
 
 /********* Connections **********/
 // Motor connections
-#define   IN1   4
-#define   IN2   7
+#define   IN1   7
+#define   IN2   8
 #define   IN3   9
-#define   IN4   8
+#define   IN4   10
 #define   ENA   6
 #define   ENB   5
 /******** Variables ********/
@@ -45,7 +47,8 @@ private:
   float Kd = 0.0;
   float dt = 0.01;
   char data;
-  float p = 999;
+  float tmp;
+  bool go = false;
 
 public:
 
@@ -54,14 +57,14 @@ public:
     pinMode(20, OUTPUT);
     digitalWrite(20, HIGH);
     // LED for bluetooth PID
-    pinMode(21, OUTPUT);
-    digitalWrite(21,LOW);
+    pinMode(13, OUTPUT);
+    digitalWrite(13,LOW);
 
     delay(250);
     Wire.begin();
     setupMPU();
     delay(2000);
-    // startUp();
+    startUp();
   }
 
   void startUp(){
@@ -109,48 +112,70 @@ public:
 
   void pidLoop(){
     bluetooth();
-    // recordAccelRegisters();  //check accelerometer readings
-    // // processAccelData(); //process the data
+    if ( go ){
+      recordAccelRegisters();  //check accelerometer readings
+      // processAccelData(); //process the data
 
-    // double elapsedTimeInSeconds = ((double)(micros()-timer)/1000000);
-    // recordGyroRegisters();
-    // processGyroData();
-    // accAngle = atan2(accelY, accelZ)*RAD_TO_DEG;
-    // // Serial.println(accAngle);
-    // // gyroRotZ += rotZ * elapsedTimeInSeconds; //angle of roll adding with an angular velocity and its corresponding time
-    // // currentAngle = 0.9934*(prevAngle + gyroRotZ) + 0.0066*(accAngle);
-    
-    // error = accAngle - setpoint;
-    // error_sum = error_sum + error * dt;
-    // error_div = (accAngle - prevAngle) / dt;
-    // stuuractie = Kp * error + Ki * error_sum + Kd * error_div;
-    // Serial.println(stuuractie);
-    // zend(stuuractie);
-    // error_prev = error;  
+      double elapsedTimeInSeconds = ((double)(micros()-timer)/1000000);
+      recordGyroRegisters();
+      processGyroData();
+      accAngle = atan2(accelY, accelZ)*RAD_TO_DEG;
+      // Serial.println(accAngle);
+      // gyroRotZ += rotZ * elapsedTimeInSeconds; //angle of roll adding with an angular velocity and its corresponding time
+      // currentAngle = 0.9934*(prevAngle + gyroRotZ) + 0.0066*(accAngle);
+      
+      error = accAngle - setpoint;
+      error_sum = error_sum + error * dt;
+      error_div = (accAngle - prevAngle) / dt;
+      stuuractie = Kp * error + Ki * error_sum + Kd * error_div;
+      zend(stuuractie);
+      error_prev = error;
+    }
   }
 
+  void blink(int time){
+    digitalWrite(13,LOW);
+    delay(time);
+    digitalWrite(13,HIGH);
+    delay(time);
+  }
+
+  void setValue(float & value){
+    value = -1;
+    while (value == -1){
+      tmp = Serial.parseFloat();
+      if (tmp == 100){
+        value = 0;
+        blink(200);
+        blink(200);
+        break;
+      }
+      if(tmp != 0){
+        value = tmp/100;
+      }
+    }
+  }
 
   void bluetooth() { 
     if (Serial.available() > 0) {
       data = Serial.read();
       if ( data == 's' ){
-            digitalWrite(21,HIGH);
-            Serial.println("start met p waarde");
-            p = 999;
-          while (p == 999){
-            p = Serial.parseFloat();
-          }
-          for(int i = 0; i < p; i++){
-            digitalWrite(21,LOW);
-            delay(500);
-            digitalWrite(21,HIGH);
-            delay(500);
-          }
+          digitalWrite(13,HIGH);
+          Serial.println("P waarde /100:");
+          setValue(Kp);
+          Serial.println("I waarde /100:");
+          setValue(Ki);
+          Serial.println("D waarde /100:");
+          setValue(Kd);
+
+          go = true;
         }
-      }
+      
       if (data == 't'){
-        digitalWrite(21,LOW);
+        digitalWrite(13,LOW);
+        go = false;
       }      
+    }
   }
 
   void setupMPU(){

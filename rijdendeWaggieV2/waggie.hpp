@@ -21,7 +21,7 @@
 #define   L     7
 #define   FL    8
 #define   STOP  0
-#define   SPEED_CONSTANT  0.5
+#define   SPEED_CONSTANT  1
 
 const int MPU_ADDR = 0x68; // I2C address of the MPU-6050. If AD0 pin is set to HIGH, the I2C address will be 0x69.
 
@@ -64,7 +64,6 @@ public:
     Wire.begin();
     setupMPU();
     delay(2000);
-    startUp();
   }
 
   void startUp(){
@@ -111,12 +110,36 @@ public:
   }
 
   void pidLoop(){
-    bluetooth();
+    if (Serial.available() > 0) {
+      data = Serial.read();
+      if ( data == 's' ){
+          digitalWrite(13,HIGH);
+          Serial.println("P waarde /100:");
+          setValue(Kp);
+          Serial.println("I waarde /100:");
+          setValue(Ki);
+          Serial.println("D waarde /100:");
+          setValue(Kd);
+          Serial.println("Values:");
+          Serial.println(Kp);
+          Serial.println(Ki);
+          Serial.println(Kd);
+          go = true;
+          startUp();
+        }
+      
+      if (data == 't'){
+        digitalWrite(13,LOW);
+        go = false;
+        motor(STOP, 0);
+      }      
+    }
+
     if ( go ){
       recordAccelRegisters();  //check accelerometer readings
-      // processAccelData(); //process the data
+      processAccelData(); //process the data
 
-      double elapsedTimeInSeconds = ((double)(micros()-timer)/1000000);
+      // double elapsedTimeInSeconds = ((double)(micros()-timer)/1000000);
       recordGyroRegisters();
       processGyroData();
       accAngle = atan2(accelY, accelZ)*RAD_TO_DEG;
@@ -133,6 +156,7 @@ public:
     }
   }
 
+
   void blink(int time){
     digitalWrite(13,LOW);
     delay(time);
@@ -140,11 +164,12 @@ public:
     delay(time);
   }
 
+
   void setValue(float & value){
     value = -1;
     while (value == -1){
       tmp = Serial.parseFloat();
-      if (tmp == 100){
+      if (tmp == 9999){
         value = 0;
         blink(200);
         blink(200);
@@ -156,27 +181,6 @@ public:
     }
   }
 
-  void bluetooth() { 
-    if (Serial.available() > 0) {
-      data = Serial.read();
-      if ( data == 's' ){
-          digitalWrite(13,HIGH);
-          Serial.println("P waarde /100:");
-          setValue(Kp);
-          Serial.println("I waarde /100:");
-          setValue(Ki);
-          Serial.println("D waarde /100:");
-          setValue(Kd);
-
-          go = true;
-        }
-      
-      if (data == 't'){
-        digitalWrite(13,LOW);
-        go = false;
-      }      
-    }
-  }
 
   void setupMPU(){
     Wire.beginTransmission(0b1101000); //This is the I2C address of the MPU (b1101000/b1101001 for AC0 low/high datasheet sec. 9.2)

@@ -4,12 +4,12 @@
 
 /********* Connections **********/
 // Motor connections
-#define   IN1   7
-#define   IN2   8
-#define   IN3   9
-#define   IN4   10
-#define   ENA   6
-#define   ENB   5
+#define   IN1   3
+#define   IN2   9
+#define   IN3   10
+#define   IN4   11
+#define   ENA   5
+#define   ENB   6
 /******** Variables ********/
 // Direction variables
 #define   F     1
@@ -32,30 +32,30 @@ int16_t temperature; // variables for temperature data
 long accelX, accelY, accelZ;
 float gForceX, gForceY, gForceZ;
 
-long gyroX, gyroY, gyroZ, gyroRotZ; //gyro raw data, gyro roll angle
-float rotX, rotY, rotZ, timer; //angular velocities, timer vars
+long gyroX, gyroY, gyroZ; //gyro raw data, gyro roll angle
+float rotX, rotY, rotZ, gyroRotZ, timer; //angular velocities, timer vars
+
+float rotXOffset, rotYOffset, rotZOffset;
 
 float accAngle, currentAngle, prevAngle=0, error, error_prev=0, error_sum=0, error_div=0;
 float stuuractie;
-float setpoint = -95;
-
+float setpoint = -90.5;
+float sensitivity = 500.0 / 32767.0;
 
 class waggie{
 private:
-  float Kp = 0.2;
-  float Ki = 0.01;
-  float Kd = 0.0;
+  float Kp = 300;
+  float Ki = 1;
+  float Kd = 10;
   float dt = 0.01;
   char data;
   float tmp;
-  bool go = false;
+  bool go = true;
+  float max = 0;
 
 public:
 
   void setupWaggie() {
-    // POWER for gyro and 
-    pinMode(20, OUTPUT);
-    digitalWrite(20, HIGH);
     // LED for bluetooth PID
     pinMode(13, OUTPUT);
     digitalWrite(13,LOW);
@@ -63,7 +63,21 @@ public:
     delay(250);
     Wire.begin();
     setupMPU();
-    delay(2000);
+    delay(1000);
+
+    for( int i = 0; i < 1000; i++){
+      recordGyroRegisters();
+      processGyroData();
+      rotXOffset += rotX;
+      rotYOffset += rotY;
+      rotZOffset += rotZ;
+      delay(3);
+    }
+
+    rotXOffset /= 1000;
+    rotYOffset /= 1000;
+    rotZOffset /= 1000;
+
   }
 
   void startUp(){
@@ -98,14 +112,16 @@ public:
 
   void zend(float waarde){
     ///zend de stuurwaarde naar de motorcontrol
-  //  Serial.println(waarde);
+    // Serial.println(waarde);
     
-    if(waarde  < 1){
-      motor(F, waarde);
+    if(waarde > 1){
+      motor(F, waarde + 25);
+      // Serial.println(waarde);
     }
-    if(waarde > -1){
-      float waardePos = waarde * -1;
-      motor(B, waardePos);
+    if(waarde < -1){
+      float waardePos = -waarde;
+      motor(B, waardePos + 25);
+      // Serial.println(waardePos);
     }
   }
 
@@ -114,11 +130,11 @@ public:
       data = Serial.read();
       if ( data == 's' ){
           digitalWrite(13,HIGH);
-          Serial.println("P waarde /100:");
+          Serial.println("P waarde /1000:");
           setValue(Kp);
-          Serial.println("I waarde /100:");
+          Serial.println("I waarde /1000:");
           setValue(Ki);
-          Serial.println("D waarde /100:");
+          Serial.println("D waarde /1000:");
           setValue(Kd);
           Serial.println("Values:");
           Serial.println(Kp);
@@ -139,20 +155,32 @@ public:
       recordAccelRegisters();  //check accelerometer readings
       processAccelData(); //process the data
 
-      // double elapsedTimeInSeconds = ((double)(micros()-timer)/1000000);
+      double elapsedTimeInSeconds = ((double)(micros()-timer)/1000000);
+      timer = micros();
       recordGyroRegisters();
       processGyroData();
       accAngle = atan2(accelY, accelZ)*RAD_TO_DEG;
       // Serial.println(accAngle);
-      // gyroRotZ += rotZ * elapsedTimeInSeconds; //angle of roll adding with an angular velocity and its corresponding time
-      // currentAngle = 0.9934*(prevAngle + gyroRotZ) + 0.0066*(accAngle);
+      gyroRotZ += (rotZ - rotZOffset) * elapsedTimeInSeconds; // kp   angle of roll adding with an angular velocity and its corresponding time
+      currentAngle = 0.99 * prevAngle + 0.01*(accAngle);
+      // Serial.println(rotZ - rotZOffset);
+      Serial.print("GyroRotZ:");
+      Serial.print(gyroRotZ*10);
+      Serial.print(",");
+      Serial.print("AccAngle:");
+      Serial.println(accAngle);
+
+      // Kp = currentAngle * Kp;
+      // Kd = (rotZ - rotZOffset) * Kd;
       
-      error = accAngle - setpoint;
+      error = setpoint - currentAngle;
       error_sum = error_sum + error * dt;
-      error_div = (accAngle - prevAngle) / dt;
+      error_div = (error - error_prev) / dt;
       stuuractie = Kp * error + Ki * error_sum + Kd * error_div;
       zend(stuuractie);
       error_prev = error;
+      prevAngle = currentAngle;
+      // delay(20);
     }
   }
 
@@ -176,7 +204,7 @@ public:
         break;
       }
       if(tmp != 0){
-        value = tmp/100;
+        value = tmp/1000;
       }
     }
   }
@@ -189,7 +217,7 @@ public:
     Wire.endTransmission();  
     Wire.beginTransmission(0b1101000); //I2C address of the MPU
     Wire.write(0x1B); //Accessing the register 1B - Gyroscope Configuration (Sec. 4.4) 
-    Wire.write(0x00000000); //Setting the gyro to full scale +/- 250deg./s 
+    Wire.write(0x00000001); //Setting the gyro to full scale +/- 500deg./s 
     Wire.endTransmission(); 
     Wire.beginTransmission(0b1101000); //I2C address of the MPU
     Wire.write(0x1C); //Accessing the register 1C - Acccelerometer Configuration (Sec. 4.5) 
@@ -207,7 +235,6 @@ public:
     accelX = Wire.read()<<8|Wire.read(); //Store first two bytes into accelX
     accelY = Wire.read()<<8|Wire.read(); //Store middle two bytes into accelY
     accelZ = Wire.read()<<8|Wire.read(); //Store last two bytes into accelZ
-    processAccelData();
   }
 
   void processAccelData(){
@@ -225,13 +252,13 @@ public:
     gyroX = Wire.read()<<8|Wire.read(); //Store first two bytes into accelX
     gyroY = Wire.read()<<8|Wire.read(); //Store middle two bytes into accelY
     gyroZ = Wire.read()<<8|Wire.read(); //Store last two bytes into accelZ
-    processGyroData();
   }
 
   void processGyroData() {
-    rotX = gyroX / 131.0;
-    rotY = gyroY / 131.0; 
-    rotZ = gyroZ / 131.0;
+    
+    rotX = gyroX * sensitivity;
+    rotY = gyroY * sensitivity; 
+    rotZ = gyroZ * sensitivity;
   }
 
   // Motor function ============================================================================================================

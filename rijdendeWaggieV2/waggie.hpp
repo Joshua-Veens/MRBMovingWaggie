@@ -33,21 +33,25 @@ long accelX, accelY, accelZ;
 float gForceX, gForceY, gForceZ;
 
 long gyroX, gyroY, gyroZ; //gyro raw data, gyro roll angle
-float rotX, rotY, rotZ, gyroRotZ, timer; //angular velocities, timer vars
+float rotX, rotY, rotZ, gyroRotX, timer; //angular velocities, timer vars
 
-float rotXOffset, rotYOffset, rotZOffset;
+float rotXOffset = -7.82;
+float rotYOffset = -3.21;
+float rotZOffset = 3.04;
 
-float accAngle, currentAngle, prevAngle=0, error, error_prev=0, error_sum=0, error_div=0;
+float accAngle, currentAngle=-88.5, prevAngle=-88.5, error, error_prev=0, error_sum=0, error_div=0;
 float stuuractie;
-float setpoint = -90.5;
+float setpoint = -88.5;
 float sensitivity = 500.0 / 32767.0;
+
+int16_t count = 0;
 
 class waggie{
 private:
-  float Kp = 300;
-  float Ki = 1;
-  float Kd = 10;
-  float dt = 0.01;
+  float Kp = 6.2;
+  float Ki = 0.001;
+  float Kd = 0.02;
+  float dt = 0.02;
   char data;
   float tmp;
   bool go = true;
@@ -63,22 +67,11 @@ public:
     delay(250);
     Wire.begin();
     setupMPU();
-    delay(1000);
+    delay(250);
 
-    for( int i = 0; i < 1000; i++){
-      recordGyroRegisters();
-      processGyroData();
-      rotXOffset += rotX;
-      rotYOffset += rotY;
-      rotZOffset += rotZ;
-      delay(3);
-    }
-
-    rotXOffset /= 1000;
-    rotYOffset /= 1000;
-    rotZOffset /= 1000;
-
+    Serial.println("Starting");
   }
+  
 
   void startUp(){
     int s = 0;
@@ -112,16 +105,12 @@ public:
 
   void zend(float waarde){
     ///zend de stuurwaarde naar de motorcontrol
-    // Serial.println(waarde);
-    
     if(waarde > 1){
-      motor(F, waarde + 25);
-      // Serial.println(waarde);
+      motor(B, waarde + 25);
     }
     if(waarde < -1){
       float waardePos = -waarde;
-      motor(B, waardePos + 25);
-      // Serial.println(waardePos);
+      motor(F, waardePos + 25);
     }
   }
 
@@ -141,7 +130,6 @@ public:
           Serial.println(Ki);
           Serial.println(Kd);
           go = true;
-          startUp();
         }
       
       if (data == 't'){
@@ -157,30 +145,36 @@ public:
 
       double elapsedTimeInSeconds = ((double)(micros()-timer)/1000000);
       timer = micros();
+
       recordGyroRegisters();
       processGyroData();
       accAngle = atan2(accelY, accelZ)*RAD_TO_DEG;
-      // Serial.println(accAngle);
-      gyroRotZ += (rotZ - rotZOffset) * elapsedTimeInSeconds; // kp   angle of roll adding with an angular velocity and its corresponding time
-      currentAngle = 0.99 * prevAngle + 0.01*(accAngle);
-      // Serial.println(rotZ - rotZOffset);
-      Serial.print("GyroRotZ:");
-      Serial.print(gyroRotZ*10);
-      Serial.print(",");
-      Serial.print("AccAngle:");
-      Serial.println(accAngle);
+      gyroRotX = ((rotX - rotXOffset) * elapsedTimeInSeconds); // kp   angle of roll adding with an angular velocity and its corresponding time
+      currentAngle = 0.96 * (prevAngle + gyroRotX) + 0.04*(accAngle);
 
-      // Kp = currentAngle * Kp;
-      // Kd = (rotZ - rotZOffset) * Kd;
+      // Serial.print("currentAngle:");
+      // Serial.print(currentAngle);
+      // Serial.print(",");
+      // Serial.print("GyroRotX:");
+      // Serial.print(gyroRotX);
+      // Serial.print(",");
+      // Serial.print("AccAngle:");
+      // Serial.println(accAngle);
+
       
-      error = setpoint - currentAngle;
-      error_sum = error_sum + error * dt;
-      error_div = (error - error_prev) / dt;
+      error = currentAngle - setpoint;
+      error_sum = error_sum + error * elapsedTimeInSeconds;
+      error_div = (error - error_prev) / elapsedTimeInSeconds;
       stuuractie = Kp * error + Ki * error_sum + Kd * error_div;
       zend(stuuractie);
       error_prev = error;
       prevAngle = currentAngle;
-      // delay(20);
+      delay(25);
+      // count++;
+      // if(count == 50)  {
+      //   count = 0;
+      //   digitalWrite(13, !digitalRead(13));
+      // }
     }
   }
 
@@ -204,7 +198,7 @@ public:
         break;
       }
       if(tmp != 0){
-        value = tmp/1000;
+        value = tmp/10000;
       }
     }
   }

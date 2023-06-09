@@ -25,41 +25,40 @@
 
 const int MPU_ADDR = 0x68; // I2C address of the MPU-6050. If AD0 pin is set to HIGH, the I2C address will be 0x69.
 
-int16_t accelerometer_x, accelerometer_y, accelerometer_z; // variables for accelerometer raw data
-int16_t gyro_x, gyro_y, gyro_z; // variables for gyro raw data
-int16_t temperature; // variables for temperature data
-
-long accelX, accelY, accelZ;
-float gForceX, gForceY, gForceZ;
-
-long gyroX, gyroY, gyroZ; //gyro raw data, gyro roll angle
-float rotX, rotY, rotZ, gyroRotX, timer; //angular velocities, timer vars
-
-float rotXOffset = -7.82;
-float rotYOffset = -3.21;
-float rotZOffset = 3.04;
-
-float accAngle, currentAngle=-88.5, prevAngle=-88.5, error, error_prev=0, error_sum=0, error_div=0;
-float stuuractie;
-float setpoint = -88.5;
-float sensitivity = 500.0 / 32767.0;
-
-int16_t count = 0;
 
 class waggie{
 private:
-  float Kp = 6.2;
-  float Ki = 0.001;
-  float Kd = 0.02;
-  float dt = 0.02;
+  float Kp = 5.6;
+  float Ki = 30.00;
+  float Kd = 0.15;
   char data;
   float tmp;
   bool go = true;
   float max = 0;
+  int16_t accelerometer_x, accelerometer_y, accelerometer_z; // variables for accelerometer raw data
+  int16_t gyro_x, gyro_y, gyro_z; // variables for gyro raw data
+  int16_t temperature; // variables for temperature data
+
+  long accelX, accelY, accelZ;
+  float gForceX, gForceY, gForceZ;
+
+  long gyroX, gyroY, gyroZ; //gyro raw data, gyro roll angle
+  float rotX, rotY, rotZ, gyroRotX, timer; //angular velocities, timer vars
+
+  float rotXOffset = -7.82;
+  float rotYOffset = -3.21;
+  float rotZOffset = 3.04;
+
+  float accAngle, currentAngle=-91.8, prevAngle=-91.8, error, error_prev=0, error_sum=0, error_div=0;
+  float stuuractie;
+  float setpoint = -91.8;
+  float sensitivity = 500.0 / 32767.0;
+
+  int16_t count = 0;
 
 public:
 
-  void setupWaggie() {
+  void setupWaggie() { 
     // LED for bluetooth PID
     pinMode(13, OUTPUT);
     digitalWrite(13,LOW);
@@ -73,38 +72,8 @@ public:
   }
   
 
-  void startUp(){
-    int s = 0;
-    for ( s; s < 80; s++){
-        // Left motor forward with full speed
-      digitalWrite(IN1, HIGH);
-      digitalWrite(IN2, LOW);
-      analogWrite(ENA, s);
-      // Right motor forward with full speed
-      digitalWrite(IN3, HIGH);
-      digitalWrite(IN4, LOW);
-      analogWrite(ENB, s);
-      delay(5);
-    }
-    delay(80);
-    s = 0;
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, HIGH);
-    analogWrite(ENA, s);
-    // Right motor forward with full speed
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, HIGH);
-    analogWrite(ENB, s);
-    delay(170);
-  
-    analogWrite(ENA, 0);
-    analogWrite(ENB, 0);
-  
-  }
-
-
   void zend(float waarde){
-    ///zend de stuurwaarde naar de motorcontrol
+    ///sends the value to the motorcontrol function
     if(waarde > 1){
       motor(B, waarde + 25);
     }
@@ -117,13 +86,13 @@ public:
   void pidLoop(){
     if (Serial.available() > 0) {
       data = Serial.read();
-      if ( data == 's' ){
+      if ( data == 's' ){ // to get pid values via bluetooth 
           digitalWrite(13,HIGH);
-          Serial.println("P waarde /1000:");
+          Serial.println("P waarde /10000:");
           setValue(Kp);
-          Serial.println("I waarde /1000:");
+          Serial.println("I waarde /10000:");
           setValue(Ki);
-          Serial.println("D waarde /1000:");
+          Serial.println("D waarde /10000:");
           setValue(Kd);
           Serial.println("Values:");
           Serial.println(Kp);
@@ -139,7 +108,7 @@ public:
       }      
     }
 
-    if ( go ){
+    if ( go ){ // starts the loop to get the car to move
       recordAccelRegisters();  //check accelerometer readings
       processAccelData(); //process the data
 
@@ -148,9 +117,9 @@ public:
 
       recordGyroRegisters();
       processGyroData();
-      accAngle = atan2(accelY, accelZ)*RAD_TO_DEG;
-      gyroRotX = ((rotX - rotXOffset) * elapsedTimeInSeconds); // kp   angle of roll adding with an angular velocity and its corresponding time
-      currentAngle = 0.96 * (prevAngle + gyroRotX) + 0.04*(accAngle);
+      accAngle = atan2(accelY, accelZ)*RAD_TO_DEG; // angle according to accel data
+      gyroRotX = ((rotX - rotXOffset) * elapsedTimeInSeconds); // angle of roll adding with an angular velocity and its corresponding time
+      currentAngle = 0.96 * (prevAngle + gyroRotX) + 0.04*(accAngle);  // complementary filter
 
       // Serial.print("currentAngle:");
       // Serial.print(currentAngle);
@@ -161,25 +130,19 @@ public:
       // Serial.print("AccAngle:");
       // Serial.println(accAngle);
 
-      
       error = currentAngle - setpoint;
       error_sum = error_sum + error * elapsedTimeInSeconds;
       error_div = (error - error_prev) / elapsedTimeInSeconds;
-      stuuractie = Kp * error + Ki * error_sum + Kd * error_div;
+      stuuractie = round(Kp * error + Ki * error_sum + Kd * error_div);
       zend(stuuractie);
       error_prev = error;
       prevAngle = currentAngle;
-      delay(25);
-      // count++;
-      // if(count == 50)  {
-      //   count = 0;
-      //   digitalWrite(13, !digitalRead(13));
-      // }
     }
+    delay(40);
   }
 
 
-  void blink(int time){
+  void blink(int time){ // blinks a led for troubleshooting
     digitalWrite(13,LOW);
     delay(time);
     digitalWrite(13,HIGH);
@@ -187,7 +150,7 @@ public:
   }
 
 
-  void setValue(float & value){
+  void setValue(float & value){ // sets a value of pid using bluetooth
     value = -1;
     while (value == -1){
       tmp = Serial.parseFloat();
